@@ -7,11 +7,42 @@ Schedule::Schedule()
 void Schedule::init()
 {
     eeprom_read_block((void *)&_phases, PHASES_ADDRESS, sizeof(_phases));
+
+    bool updatePhases = false;
+    for (size_t i = 0; i < PHASES_COUNT; i++)
+    {
+        Phase *phase = &_phases[i];
+        if (phase->hour < 0 || phase->hour > 23)
+        {
+            phase->hour = 0;
+            updatePhases = true;
+        }
+        if (phase->minute < 0 || phase->minute > 59)
+        {
+            phase->minute = 0;
+            updatePhases = true;
+        }
+        if (phase->color < -1 || phase->color >= COLORS_COUNT)
+        {
+            phase->color = -1;
+            updatePhases = true;
+        }
+        if (phase->level < 0 || phase->level > 20)
+        {
+            phase->level = 0;
+            updatePhases = true;
+        }
+    }
+    if (updatePhases)
+    {
+        eeprom_write_block((void *)&_phases, PHASES_ADDRESS, sizeof(_phases));
+    }
 }
 
 void Schedule::initPhasesFromString(const char *str)
 {
-    char *strCopy = strdup(str);
+    char strCopy[strlen(str)];
+    strcpy(strCopy, str);
 
     char *pch = strtok(strCopy, ";");
     for (size_t i = 0; pch != NULL; i++)
@@ -19,8 +50,6 @@ void Schedule::initPhasesFromString(const char *str)
         _phases[i] = toPhase(pch);
         pch = strtok(NULL, ";");
     }
-
-    free(strdup);
 }
 
 void Schedule::save(const char *str)
@@ -79,7 +108,7 @@ const uint8_t Schedule::getLevel(const DateTime &nowDateTime, const uint8_t colo
 
 Phase *Schedule::getPhaseByColor(const uint8_t i, const int8_t color)
 {
-    for (size_t i = 0; i < COLORS_COUNT; i++)
+    for (int8_t i = -1; i <= COLORS_COUNT; i++)
     {
         if (color == i)
         {
@@ -91,7 +120,8 @@ Phase *Schedule::getPhaseByColor(const uint8_t i, const int8_t color)
 
 Phase Schedule::toPhase(const char *str)
 {
-    char *strCopy = strdup(str);
+    char strCopy[strlen(str)];
+    strcpy(strCopy, str);
 
     char *phaseChars[5];
     char *pch = strtok(strCopy, ":");
@@ -102,51 +132,42 @@ Phase Schedule::toPhase(const char *str)
     }
 
     Phase phase;
-    phase.color = atoi(phaseChars[0]);
+    phase.hour = atoi(phaseChars[0]);
+    phase.minute = atoi(phaseChars[1]);
+    phase.color = atoi(phaseChars[2]);
     if (phase.color >= 0)
     {
-        phase.hour = atoi(phaseChars[1]);
-        phase.minute = atoi(phaseChars[2]);
         phase.level = atoi(phaseChars[3]);
     }
+    else 
+    {
+        phase.level = 0;
+    }
 
-    free(strdup);
+    return phase;
 }
 
-const char *Schedule::toString()
+String Schedule::toString()
 {
-    char result[15 * PHASES_COUNT + PHASES_COUNT];
+    String result = "";
     for (size_t i = 0; i < PHASES_COUNT; i++)
     {
-        strcat(result, toString(_phases[i], i));
-        strcat(result, ";");
+        result += toString(_phases[i], i);
+        result += ";";
     }
     return result;
 }
 
-const char *Schedule::toString(const Phase &phase, const uint8_t i)
+String Schedule::toString(const Phase &phase, const uint8_t i)
 {
-    char result[15];
-    char buf[2];
-
-    itoa(i, buf, DEC);
-    strcat(result, buf);
-
-    itoa(phase.color, buf, DEC);
-    strcat(result, ":");
-    strcat(result, buf);
-
-    itoa(phase.hour, buf, DEC);
-    strcat(result, ":");
-    strcat(result, buf);
-
-    itoa(phase.minute, buf, DEC);
-    strcat(result, ":");
-    strcat(result, buf);
-
-    itoa(phase.level, buf, DEC);
-    strcat(result, ":");
-    strcat(result, buf);
+    String result = "";
+    result += phase.hour;
+    result += ":";
+    result += phase.minute;
+    result += ":";
+    result += phase.color;
+    result += ":";
+    result += phase.level;
 
     return result;
 }

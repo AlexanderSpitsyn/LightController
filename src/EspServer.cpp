@@ -2,34 +2,48 @@
 
 EspServer::EspServer(uint8_t receivePin, uint8_t transmitPin) : _esp(receivePin, transmitPin)
 {
-    _esp.begin(115200);
+}
 
-    sendData("AT+CWMODE=2", 1000);
-    sendData("AT+CIFSR", 1000);          // This will show IP address on the serial monitor
-    sendData("AT+CIPMUX=0", 1000);       // This will allow multiple connections
-    sendData("AT+CIPSERVER=1,80", 1000); // This will start the web server on port 80
+void EspServer::init()
+{
+    _esp.begin(9600);
+
+    sendData(F("AT+RST"));
+    sendData(F("AT+UART_DEF=9600,8,1,0,0"));
+    sendData(F("AT+CWMODE=2"));
+    sendData(F("AT+CIFSR"));          // This will show IP address on the serial monitor
+    sendData(F("AT+CIPMUX=1"));       // This will allow multiple connections
+    sendData(F("AT+CIPSERVER=1,80")); // This will start the web server on port 80
 }
 
 void EspServer::onRequest(String (*callback)(const String &))
 {
-    if (_esp.available()) // check if there is data available on ESP8266
+    String msg = "";
+    unsigned long time = millis();
+    while ((time + TIMEOUT) > millis())
     {
-        if (_esp.find("+IPD,")) // if there is a new command
+        while (_esp.available()) // check if there is data available on ESP8266
         {
-            _esp.find("/"); // run cursor until command is found
-            String msg = _esp.readStringUntil(' ');
-
-            sendResponse(callback(msg));
+            char c = _esp.read();
+            msg += c;
         }
+    }
+    if (msg.indexOf("+IPD,") > -1)
+    {
+        msg = msg.substring(msg.indexOf('/') + 1);
+        msg = msg.substring(0, msg.indexOf(' '));
+
+        String resp = callback(msg);
+        sendResponse(resp);
     }
 }
 
-String EspServer::sendData(const String &command, const int timeout)
+String EspServer::sendData(const String &command)
 {
     String response = "";
     _esp.println(command);
-    long int time = millis();
-    while ((time + timeout) > millis())
+    unsigned long time = millis();
+    while ((time + TIMEOUT) > millis())
     {
         while (_esp.available())
         {
@@ -37,13 +51,15 @@ String EspServer::sendData(const String &command, const int timeout)
             response += c;
         }
     }
+    Serial.println("\n" + command + " : " + response);
+    delay(DELAY);
     return response;
 }
 
 void EspServer::sendResponse(const int status, const String &resp)
 {
     uint32_t contentLenght = resp.length();
-    String okResp = "HTTP/1.1 200 OK\r\nConnection: close\r\ncontent-length: ";
+    String okResp = "HTTP/1.1 200 OK\r\nConnection: close\r\nAccess-Control-Allow-Origin: *\r\ncontent-length: ";
     okResp += contentLenght;
     okResp += "\r\ncontent-type: text/plain\r\n\r\n";
     if (contentLenght != 0)
@@ -53,10 +69,10 @@ void EspServer::sendResponse(const int status, const String &resp)
 
     String len = "";
     len += okResp.length() + 2;
-    sendData("AT+CIPSEND=0," + len, 1000);
-    _esp.find(">");
-    sendData(okResp, 1000);
-    sendData("AT+CIPCLOSE=5", 1000);
+    sendData("AT+CIPSEND=0," + len);
+    _esp.find('>');
+    sendData(okResp);
+    sendData(F("AT+CIPCLOSE=5"));
 }
 
 void EspServer::sendResponse(const String &resp)

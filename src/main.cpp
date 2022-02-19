@@ -1,10 +1,5 @@
 #include <Arduino.h>
-#include <SPI.h>
 #include <TimerMs.h>
-#include <RTClib.h>
-#include <EEPROM.h>
-#include <SoftwareSerial.h>
-#include <Wire.h>
 
 #include "EspServer.h"
 #include "Schedule.h"
@@ -15,7 +10,6 @@
 #define GET_PHASES_PARAM "get_phases"
 #define SET_PHASES_PARAM "set_phases"
 #define CURRENT_VALUES_PARAM "current_values"
-
 
 #define BLUE_PIN 5
 #define WHITE_PIN 6
@@ -29,8 +23,6 @@ TimerMs levelLogTimer[COLORS_COUNT];
 boolean showCurrentLevels = false;
 uint8_t blueCurrentLevel = 0;
 uint8_t whiteCurrentLevel = 0;
-DateTime now;
-
 
 void log(const String &message)
 {
@@ -59,7 +51,6 @@ void printDateTime(const DateTime &now)
   }
 }
 
-
 void getCommandFromMessage(const String &message, String &param, String &value)
 {
   log(message);
@@ -67,7 +58,6 @@ void getCommandFromMessage(const String &message, String &param, String &value)
   param = message.substring(0, sepIdx);
   value = message.substring(sepIdx + 1);
 }
-
 
 void showLightCurrentLevels(const String &value)
 {
@@ -78,7 +68,7 @@ void showLightCurrentLevels(const String &value)
   {
     blueCurrentLevel = level;
   }
-  else if (color = WHITE_COLOR)
+  else if (color == WHITE_COLOR)
   {
     whiteCurrentLevel = level;
   }
@@ -89,7 +79,7 @@ String processRequest(const String &msg)
 {
   if (msg == GET_TIMESTAMP_PARAM)
   {
-    return String(now.unixtime());
+    return String(rtc.now().unixtime());
   }
 
   String param, value;
@@ -100,6 +90,10 @@ String processRequest(const String &msg)
     uint32_t valueInt = strtoul(value.c_str(), NULL, 10);
     rtc.adjust(DateTime(valueInt));
     printDateTime(rtc.now());
+  }
+  else if (param == GET_PHASES_PARAM)
+  {
+    return schedule.toString();
   }
   else if (param == SET_PHASES_PARAM)
   {
@@ -117,8 +111,7 @@ void setup()
 {
   if (DEBUG)
   {
-    Serial.begin(115200);
-    Serial.println("TEST");
+    Serial.begin(9600);
     for (uint8_t i = 0; i < COLORS_COUNT; i++)
     {
       levelLogTimer[i].setPeriodMode();
@@ -127,11 +120,10 @@ void setup()
     }
   }
 
-  if (!rtc.begin())
+  while (!rtc.begin())
   {
     Serial.println("Couldn't find RTC");
-    while (1)
-      ;
+    delay(1000);
   }
 
   if (rtc.lostPower())
@@ -142,13 +134,13 @@ void setup()
 
   printDateTime(rtc.now());
 
+  esp.init();
   schedule.init();
   log(schedule.toString());
 }
 
 void loop()
 {
-  now = rtc.now();
   esp.onRequest(processRequest);
 
   if (showCurrentLevels)
@@ -158,9 +150,10 @@ void loop()
   }
   else
   {
+    DateTime now = rtc.now();
     analogWrite(BLUE_PIN, schedule.getLevel(now, BLUE_COLOR) * DUTY_MULTIPLICATOR);
     analogWrite(WHITE_PIN, schedule.getLevel(now, WHITE_COLOR) * DUTY_MULTIPLICATOR);
   }
 
-  delay(100);
+  delay(1000);
 }
